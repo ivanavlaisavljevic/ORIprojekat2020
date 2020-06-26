@@ -13,19 +13,21 @@ from os import listdir, makedirs, getcwd, remove
 from os.path import isfile, join, abspath, exists, isdir, expanduser
 from PIL import Image
 from pathlib import Path
+import csv
+
+from PyQt5.pyrcc_main import verbose
 from skimage.io import imread
 from skimage.transform import resize
 from keras.models import Sequential, Model
 from keras.applications.vgg16 import VGG16, preprocess_input
-from keras.preprocessing.image import ImageDataGenerator,load_img, img_to_array
+from keras.preprocessing.image import ImageDataGenerator, load_img, img_to_array
 from keras.models import Sequential
-from keras.layers import Conv2D, MaxPooling2D, Dense, Dropout, Input, Flatten, SeparableConv2D
+from keras.layers import Conv2D, Conv3D, MaxPooling2D, MaxPool2D, AveragePooling2D, MaxPooling3D, Dense, Dropout, Input, Flatten, SeparableConv2D
 from keras.layers import Activation
 from keras.layers.normalization import BatchNormalization
 from keras.layers.merge import Concatenate
 from keras.models import Model
 from keras.optimizers import Adam, SGD, RMSprop
-from keras.callbacks import ModelCheckpoint, Callback, EarlyStopping
 from keras.utils import to_categorical
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
@@ -34,12 +36,15 @@ from sklearn.metrics import confusion_matrix
 import cv2
 from keras import backend as K
 import keras
+from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
 
-img_rows, img_cols = 224, 224
+img_rows, img_cols = 64, 64
 
-epochs = 12
-batch_size = 16
+epochs = 100
+batch_size = 32
 num_classes = 3
+correct_answer = {}
+answer = ["BACTERIA", "NORMAL", "VIRUS"]
 
 train_dir = Path("data/train")
 val_dir = Path("data/val")
@@ -47,147 +52,106 @@ val_dir = Path("data/val")
 if __name__ == '__main__':
     print("pocelo")
 
-    normal_cases_dir = train_dir / 'NORMAL'
-    bacteria_cases_dir = train_dir / 'BACTERIA'
-    virus_cases_dir = train_dir / 'VIRUS'
+    train_datagen = ImageDataGenerator(
+        rescale=1. / 255,
+        shear_range=0.2,
+        zoom_range=0.2,
+        horizontal_flip=True)
 
-    # Get the list of all the images
-    normal_cases = normal_cases_dir.glob('*.jpeg')
-    bacteria_cases = bacteria_cases_dir.glob('*.jpeg')
-    virus_cases = virus_cases_dir.glob('*.jpeg')
+    test_datagen = ImageDataGenerator(rescale=1. / 255)
 
+    train_generator = train_datagen.flow_from_directory(
+        'data/train',
+        target_size=(img_rows, img_cols),
+        batch_size=32,
+        class_mode='categorical')
 
-    # List that are going to contain validation images data and the corresponding labels
-    train_data = []
-    train_labels = []
+    validation_generator = test_datagen.flow_from_directory(
+        'data/val',
+        target_size=(img_rows, img_cols),
+        batch_size=32,
+        class_mode='categorical')
 
-    # Some images are in grayscale while majority of them contains 3 channels. So, if the image is grayscale, we will convert into a image with 3 channels.
-    # We will normalize the pixel values and resizing all the images to 224x224
-
-
-
-    # Normal cases
-    i = 0
-    for img in normal_cases:
-        img = cv2.imread(str(img))
-        img = cv2.resize(img, (224, 224))
-
-        img = img.astype(np.float32) / 255.
-        label = to_categorical(0, num_classes=3)
-        train_data.append(img)
-        train_labels.append(label)
-        i = i + 1
-    print("############################## ", i)
-
-    # Bacteria cases
-    for img in bacteria_cases:
-        img = cv2.imread(str(img))
-        img = cv2.resize(img, (224, 224))
-
-        img = img.astype(np.float32) / 255.
-        label = to_categorical(1, num_classes=3)
-        train_data.append(img)
-        train_labels.append(label)
-
-    # Virus cases
-    for img in virus_cases:
-        img = cv2.imread(str(img))
-        img = cv2.resize(img, (224, 224))
-
-        img = img.astype(np.float32) / 255.
-        label = to_categorical(2, num_classes=3)
-        train_data.append(img)
-        train_labels.append(label)
-
-    # Convert the list into numpy arrays
-    train_data = np.array(train_data)
-    train_labels = np.array(train_labels)
-
-    if K.image_data_format() == 'channels_first':
-        train_data = train_data.reshape(len(train_data), 3, img_rows, img_cols)
-        input_shape = (3, img_rows, img_cols)
-    else:
-        train_data = train_data.reshape(len(train_data), img_rows, img_cols, 3)
-        input_shape = (img_rows, img_cols, 3)
-
-
-    ####################VALIDATION#####################
-    normal_cases_dir = val_dir / 'NORMAL'
-    bacteria_cases_dir = val_dir / 'BACTERIA'
-    virus_cases_dir = val_dir / 'VIRUS'
-
-    # Get the list of all the images
-    normal_cases = normal_cases_dir.glob('*.jpeg')
-    bacteria_cases = bacteria_cases_dir.glob('*.jpeg')
-    virus_cases = virus_cases_dir.glob('*.jpeg')
-
-    # List that are going to contain validation images data and the corresponding labels
-    test_data = []
-    test_labels = []
-
-    # Normal cases
-    for img in normal_cases:
-        img = cv2.imread(str(img))
-        img = cv2.resize(img, (224, 224))
-
-        img = img.astype(np.float32) / 255.
-        label = to_categorical(0, num_classes=3)
-        test_data.append(img)
-        test_labels.append(label)
-
-    # Bacteria cases
-    for img in bacteria_cases:
-        img = cv2.imread(str(img))
-        img = cv2.resize(img, (224, 224))
-
-        img = img.astype(np.float32) / 255.
-        label = to_categorical(1, num_classes=3)
-        test_data.append(img)
-        test_labels.append(label)
-
-    # Virus cases
-    for img in virus_cases:
-        img = cv2.imread(str(img))
-        img = cv2.resize(img, (224, 224))
-
-        img = img.astype(np.float32) / 255.
-        label = to_categorical(2, num_classes=3)
-        test_data.append(img)
-        test_labels.append(label)
-
-    # Convert the list into numpy arrays
-    test_data = np.array(test_data)
-    test_labels = np.array(test_labels)
-
-    if K.image_data_format() == 'channels_first':
-        test_data = test_data.reshape(len(test_data), 3, img_rows, img_cols)
-        input_shape = (3, img_rows, img_cols)
-    else:
-        test_data = test_data.reshape(len(test_data), img_rows, img_cols, 3)
-        input_shape = (img_rows, img_cols, 3)
-
-    # model
+    #MODEL
     model = Sequential()
-    model.add(Conv2D(32, kernel_size=(3, 3), activation='relu', input_shape=input_shape))
-    model.add(Conv2D(64, (3, 3), activation='relu'))
+    model.add(Conv2D(64, kernel_size=(3, 3), input_shape=(img_rows, img_cols, 3)))
+    model.add(Activation("relu"))
     model.add(MaxPooling2D(pool_size=(2, 2)))
-    model.add(Dropout(0.25))
+    model.add(Dropout(0.2))
+
+    model.add(Conv2D(64, kernel_size=(3, 3), input_shape=(img_rows, img_cols, 3)))
+    model.add(Activation("relu"))
+    model.add(MaxPooling2D(pool_size=(2, 2)))
+    model.add(Dropout(0.3))
+
+    model.add(Conv2D(64, kernel_size=(3, 3), input_shape=(img_rows, img_cols, 3)))
+    model.add(Activation("relu"))
+    model.add(MaxPooling2D(pool_size=(2, 2)))
+    model.add(Dropout(0.3))
+
+    model.add(Conv2D(64, kernel_size=(3, 3), input_shape=(img_rows, img_cols, 3)))
+    model.add(Activation("relu"))
+    model.add(MaxPooling2D(pool_size=(2, 2)))
+    model.add(Dropout(0.4))
+
     model.add(Flatten())
-    model.add(Dense(128, activation='relu'))
+
+    model.add(Dense(64, activation="relu", kernel_regularizer=keras.regularizers.l2(0.001)))
+
     model.add(Dropout(0.5))
-    model.add(Dense(num_classes, activation='softmax'))
+
+    model.add(Dense(3, kernel_regularizer=keras.regularizers.l2(0.001)))
+    model.add(Dense(num_classes, activation="softmax"))
+
     model.summary()
 
-    # kompajliranje modela za multiklasnu klasifikaciju
+    # Compile model
     model.compile(loss=keras.losses.categorical_crossentropy,
-                  optimizer=keras.optimizers.Adadelta(),
-                  metrics=['accuracy'])
+                  optimizer=keras.optimizers.Adam(), metrics=['accuracy'])
 
-    # treniranje i evaluacija
-    model.fit(train_data, train_labels, batch_size=batch_size, epochs=epochs, verbose=1,
-              validation_data=(test_data, test_labels))
-    # ispis rezultata
-    score = model.evaluate(test_data, test_labels, verbose=0)
-    print('Test loss:', score[0])
-    print('Test accuracy:', score[1])
+    # hist = model.fit_generator(generator=train_generator, validation_data=validation_generator, epochs=epochs)
+    # # Show results
+    # score = model.evaluate_generator(train_generator, verbose=0)
+    #
+    # print('Test loss:', score[0])
+    # print('Test accuracy:', score[1])
+
+    # model.save_weights("trying.h5")
+
+    print("[ LOADING WEIGHTS... ]")
+    model.load_weights("trying.h5")
+    print("[ WEIGHTS LOADED! ]")
+
+    with open('metadata.csv', mode='r') as csv_file:
+        csv_reader = csv.DictReader(csv_file)
+        for row in csv_reader:
+            if row["Label"] == "Pnemonia":
+                correct_answer[row["X_ray_image_name"]] = row["Label_1_Virus_category"].upper()
+            else:
+                correct_answer[row["X_ray_image_name"]] = row["Label"].upper()
+
+    # print(correct_answer)
+
+    img_names = correct_answer.keys()
+
+    img_to_predict = None
+    correct = 0
+    incorrect = 0
+
+    for name in img_names:
+        path_img_to_predict = "data\\test\\" + name
+        img_to_predict = cv2.imread(path_img_to_predict)
+        img_to_predict = cv2.resize(img_to_predict, (img_rows, img_cols))
+        img_to_predict = np.reshape(img_to_predict, (1, img_rows, img_cols, 3))
+        res = answer[model.predict_classes(np.array(img_to_predict))[0]]
+
+        if res == correct_answer[name]:
+            correct = correct + 1
+        else:
+            incorrect = incorrect + 1
+
+    print("[CORRECT ANSWERS: ", correct, "]\n[INCORRECT ANSWERS: ", incorrect, "]")
+    perc = correct / (correct + incorrect) * 100
+    print("[PERCENTAGE OF ACCURACY: ", perc, "]")
+
 
