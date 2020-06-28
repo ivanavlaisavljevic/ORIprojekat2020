@@ -72,7 +72,8 @@ if __name__ == '__main__':
         batch_size=32,
         class_mode='categorical')
 
-    #MODEL
+    # MODEL
+
     model = Sequential()
     model.add(Conv2D(64, kernel_size=(3, 3), input_shape=(img_rows, img_cols, 3)))
     model.add(Activation("relu"))
@@ -95,11 +96,8 @@ if __name__ == '__main__':
     model.add(Dropout(0.4))
 
     model.add(Flatten())
-
     model.add(Dense(64, activation="relu", kernel_regularizer=keras.regularizers.l2(0.001)))
-
     model.add(Dropout(0.5))
-
     model.add(Dense(3, kernel_regularizer=keras.regularizers.l2(0.001)))
     model.add(Dense(num_classes, activation="softmax"))
 
@@ -130,7 +128,6 @@ if __name__ == '__main__':
             else:
                 correct_answer[row["X_ray_image_name"]] = row["Label"].upper()
 
-    # print(correct_answer)
 
     img_names = correct_answer.keys()
 
