@@ -28,7 +28,7 @@ if __name__ == '__main__':
     # plt.show()
 
     print("[CLUSTERING ...]")
-    clusterer = hdbscan.HDBSCAN(min_cluster_size=15).fit(data)
+    clusterer = hdbscan.HDBSCAN(min_cluster_size=7).fit(data)
     color_palette = sns.color_palette('Paired',1000)
     cluster_colors = [color_palette[x] if x >= 0
                       else (0.5, 0.5, 0.5)
