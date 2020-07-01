@@ -7,7 +7,39 @@ from IPython.display import HTML, display
 from yellowbrick.cluster import KElbowVisualizer
 from yellowbrick.cluster.elbow import kelbow_visualizer
 from yellowbrick.datasets.loaders import load_nfl
-import seaborn as sns
+import seaborn as sb
+
+def eda(data):
+    print("Started exploratory data analysis!")
+    k_means = KMeans(n_clusters=6)
+
+    cols = ["BALANCE", "PURCHASES", "CASH_ADVANCE", "CREDIT_LIMIT", "PAYMENTS", "MINIMUM_PAYMENTS"]
+    selected = pandas.DataFrame(data[cols])
+
+    label = k_means.fit_predict(selected)
+
+    # 'cluster' column
+    selected['cluster'] = label
+    cols.append('cluster')
+
+    # Seaborn pairplot
+    sb.countplot(data=selected, hue='cluster', x='cluster')
+    sb.pairplot(selected[cols], hue='cluster', vars=cols, palette='Dark2')
+    plt.show()
+
+    cols1 = ["MONTHLY_AVG_PURCHASE", "MONTHLY_CASH_ADVANCE", "LIMIT_RATIO", "PAYMENT_MIN_RATIO"]
+    selected1 = pandas.DataFrame(data[cols1])
+
+    label1 = k_means.fit_predict(selected1)
+
+    # 'cluster' column
+    selected1['cluster'] = label1
+    cols1.append('cluster')
+
+    # Seaborn pairplot
+    sb.countplot(data=selected1, hue='cluster', x='cluster')
+    sb.pairplot(selected1[cols1], hue='cluster', vars=cols1, palette='Dark2')
+    plt.show()
 
 if __name__ == '__main__':
 
@@ -57,6 +89,8 @@ if __name__ == '__main__':
 
     allData = allData[numerical]
 
+    eda(allData)
+
     #ELBOW ALGORITHM
     #
     # print("[ ELBOW ALGORITHM ... ]")
@@ -64,15 +98,15 @@ if __name__ == '__main__':
     # model = KMeans()
     # visualizer = KElbowVisualizer(model, k=(4, 12))
     #
-    # visualizer.fit(data)  # Fit the data to the visualizer
+    # visualizer.fit(allData)  # Fit the data to the visualizer
     # visualizer.show()
 
     print("[ CLUSTERING ... ]")
-    kmeans = KMeans(n_clusters=7, random_state=0, init="k-means++", max_iter=300, n_init=10)
+    kmeans = KMeans(n_clusters=6, random_state=0, init="k-means++", max_iter=300, n_init=10)
     y_kmeans = kmeans.fit_predict(data)
     X = data
 
-    first_cluster = np.matrix(X[y_kmeans == 6]).astype(float)
+    first_cluster = np.matrix(X[y_kmeans == 1]).astype(float)
     df_cluster1 = pandas.DataFrame(first_cluster)
 
     # # # 6 Visualising the clusters
@@ -82,7 +116,6 @@ if __name__ == '__main__':
     # # plt.scatter(X[y_kmeans == 3, 0], X[y_kmeans == 3, 1], s=10, c='cyan', label='Cluster 4')
     # # plt.scatter(X[y_kmeans == 4, 0], X[y_kmeans == 4, 1], s=10, c='magenta', label='Cluster 5')
     # # plt.scatter(X[y_kmeans == 5, 0], X[y_kmeans == 5, 1], s=10, c='purple', label='Cluster 6')
-    # # plt.scatter(X[y_kmeans == 6, 0], X[y_kmeans == 6, 1], s=10, c='black', label='Cluster 7')
     # #
     # # # Plot the centroid. This time we're going to use the cluster centres  #attribute that returns here the coordinates of the centroid.
     # # plt.scatter(kmeans.cluster_centers_[:, 0], kmeans.cluster_centers_[:, 1], s=30, c='yellow', label='Centroids')
@@ -91,6 +124,10 @@ if __name__ == '__main__':
     # # plt.show()
     #
 
-    hist = df_cluster1.hist()
+    #hist = df_cluster1[0].hist(weights=(np.ones_like(df_cluster1.index) / len(df_cluster1.index))*100)
+    #sb.set()
+    #sns.jointplot(x=df_cluster1[12], y=df_cluster1[2])
+    #sb.pairplot(allData, vars=[0, 2])
 
-    plt.show()
+    #plt.title('['+str(len(first_cluster))+']')
+    #plt.show()
