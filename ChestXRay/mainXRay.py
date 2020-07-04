@@ -62,7 +62,7 @@ if __name__ == '__main__':
     model.add(MaxPooling2D(pool_size=(2, 2)))
     model.add(Dropout(0.3))
 
-    model.add(Conv2D(64, kernel_size=(3, 3), input_shape=(img_rows, img_cols, 3)))
+    model.add(Conv2D(128, kernel_size=(3, 3), input_shape=(img_rows, img_cols, 3)))
     model.add(Activation("relu"))
     model.add(MaxPooling2D(pool_size=(2, 2)))
     model.add(Dropout(0.4))
@@ -75,23 +75,26 @@ if __name__ == '__main__':
 
     model.summary()
 
-    opt = keras.optimizers.SGD(lr=1e-4, momentum=0.9, decay=0.01)
+    opt = keras.optimizers.Adamax()
 
     # Compile model
     model.compile(loss=keras.losses.categorical_crossentropy,
                   optimizer=opt, metrics=['accuracy'])
 
+    print("[ TRAINING NEURAL NETWORK ... ]")
     hist = model.fit_generator(generator=train_generator, validation_data=validation_generator, epochs=epochs)
+    print("[ TRAINING DONE! ]")
+
     # Show results
     score = model.evaluate_generator(train_generator, verbose=0)
 
     print('Test loss:', score[0])
     print('Test accuracy:', score[1])
 
-    model.save_weights("trying.h5")
+    model.save_weights("trying_final.h5")
 
     # print("[ LOADING WEIGHTS... ]")
-    # model.load_weights("trying.h5")
+    # model.load_weights("trying_SGD.h5")
     # print("[ WEIGHTS LOADED! ]")
     #
     # with open('metadata.csv', mode='r') as csv_file:
