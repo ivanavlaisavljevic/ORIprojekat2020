@@ -89,7 +89,7 @@ if __name__ == '__main__':
 
     allData = allData[numerical]
 
-    eda(allData)
+    #eda(allData)
 
     #ELBOW ALGORITHM
     #
@@ -106,28 +106,29 @@ if __name__ == '__main__':
     y_kmeans = kmeans.fit_predict(data)
     X = data
 
-    first_cluster = np.matrix(X[y_kmeans == 1]).astype(float)
+    first_cluster = np.matrix(X[y_kmeans == 3]).astype(float)
     df_cluster1 = pandas.DataFrame(first_cluster)
 
-    # # # 6 Visualising the clusters
-    # # plt.scatter(X[y_kmeans == 0, 0], X[y_kmeans == 0, 1], s=10, c='red', label='Cluster 1')
-    # # plt.scatter(X[y_kmeans == 1, 0], X[y_kmeans == 1, 1], s=10, c='blue', label='Cluster 2')
-    # # plt.scatter(X[y_kmeans == 2, 0], X[y_kmeans == 2, 1], s=10, c='green', label='Cluster 3')
-    # # plt.scatter(X[y_kmeans == 3, 0], X[y_kmeans == 3, 1], s=10, c='cyan', label='Cluster 4')
-    # # plt.scatter(X[y_kmeans == 4, 0], X[y_kmeans == 4, 1], s=10, c='magenta', label='Cluster 5')
-    # # plt.scatter(X[y_kmeans == 5, 0], X[y_kmeans == 5, 1], s=10, c='purple', label='Cluster 6')
-    # #
-    # # # Plot the centroid. This time we're going to use the cluster centres  #attribute that returns here the coordinates of the centroid.
-    # # plt.scatter(kmeans.cluster_centers_[:, 0], kmeans.cluster_centers_[:, 1], s=30, c='yellow', label='Centroids')
-    # # plt.title('Clusters of CreditCards users')
-    # #
-    # # plt.show()
-    #
+    # 6 Visualising the clusters
+    plt.scatter(X[y_kmeans == 0, 0], X[y_kmeans == 0, 1], s=10, c='red', label='Cluster 1')
+    plt.scatter(X[y_kmeans == 1, 0], X[y_kmeans == 1, 1], s=10, c='blue', label='Cluster 2')
+    plt.scatter(X[y_kmeans == 2, 0], X[y_kmeans == 2, 1], s=10, c='green', label='Cluster 3')
+    plt.scatter(X[y_kmeans == 3, 0], X[y_kmeans == 3, 1], s=10, c='cyan', label='Cluster 4')
+    plt.scatter(X[y_kmeans == 4, 0], X[y_kmeans == 4, 1], s=10, c='magenta', label='Cluster 5')
+    plt.scatter(X[y_kmeans == 5, 0], X[y_kmeans == 5, 1], s=10, c='purple', label='Cluster 6')
 
-    #hist = df_cluster1[0].hist(weights=(np.ones_like(df_cluster1.index) / len(df_cluster1.index))*100)
+    # Plot the centroid. This time we're going to use the cluster centres  #attribute that returns here the coordinates of the centroid.
+    plt.scatter(kmeans.cluster_centers_[:, 0], kmeans.cluster_centers_[:, 1], s=30, c='yellow', label='Centroids')
+    plt.title('Clusters of CreditCards users')
+
+    plt.show()
+
+
+    df_cluster1[0].hist(weights=(np.ones_like(df_cluster1.index) / len(df_cluster1.index))*100)
+
     #sb.set()
     #sns.jointplot(x=df_cluster1[12], y=df_cluster1[2])
     #sb.pairplot(allData, vars=[0, 2])
 
-    #plt.title('['+str(len(first_cluster))+']')
-    #plt.show()
+    plt.title('['+str(len(first_cluster))+']')
+    plt.show()
