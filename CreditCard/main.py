@@ -1,134 +1,185 @@
 from sklearn.cluster import KMeans
 import numpy as np
-import csv
 from matplotlib import pyplot as plt
 import pandas
-from IPython.display import HTML, display
+import pandas as pd
+from sklearn.tree import _tree, DecisionTreeClassifier
 from yellowbrick.cluster import KElbowVisualizer
-from yellowbrick.cluster.elbow import kelbow_visualizer
-from yellowbrick.datasets.loaders import load_nfl
 import seaborn as sb
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
+import warnings
 
-def eda(data):
-    print("Started exploratory data analysis!")
-    k_means = KMeans(n_clusters=6)
+warnings.filterwarnings("ignore")
 
-    cols = ["BALANCE", "PURCHASES", "CASH_ADVANCE", "CREDIT_LIMIT", "PAYMENTS", "MINIMUM_PAYMENTS"]
-    selected = pandas.DataFrame(data[cols])
 
-    label = k_means.fit_predict(selected)
+def get_class_rules(tree: DecisionTreeClassifier, feature_names: list):
+    inner_tree: _tree.Tree = tree.tree_
+    classes = tree.classes_
+    class_rules_dict = dict()
 
-    # 'cluster' column
-    selected['cluster'] = label
-    cols.append('cluster')
+    def tree_dfs(node_id=0, current_rule=None):
+        # feature[i] holds the feature to split on, for the internal node i.
+        if current_rule is None:
+            current_rule = []
+        split_feature = inner_tree.feature[node_id]
+        if split_feature != _tree.TREE_UNDEFINED:  # internal node
+            name = feature_names[split_feature]
+            threshold = inner_tree.threshold[node_id]
+            # left child
+            left_rule = current_rule + ["({} <= {})".format(name, threshold)]
+            tree_dfs(inner_tree.children_left[node_id], left_rule)
+            # right child
+            right_rule = current_rule + ["({} > {})".format(name, threshold)]
+            tree_dfs(inner_tree.children_right[node_id], right_rule)
+        else:  # leaf
+            dist = inner_tree.value[node_id][0]
+            dist = dist / dist.sum()
+            max_idx = dist.argmax()
+            if len(current_rule) == 0:
+                rule_string = "ALL"
+            else:
+                rule_string = " and ".join(current_rule)
+            # register new rule to dictionary
+            selected_class = classes[max_idx]
+            class_probability = dist[max_idx]
+            class_rules = class_rules_dict.get(selected_class, [])
+            class_rules.append((rule_string, class_probability))
+            class_rules_dict[selected_class] = class_rules
 
-    # Seaborn pairplot
-    sb.countplot(data=selected, hue='cluster', x='cluster')
-    sb.pairplot(selected[cols], hue='cluster', vars=cols, palette='Dark2')
+    tree_dfs()  # start from root, node_id = 0
+    return class_rules_dict
+
+
+def cluster_report(the_data: pd.DataFrame, cluster_num, min_samples_leaf=50, pruning_level=0.01):
+    print("[ MAKING CLUSTER REPORT ... ]")
+    pca = PCA(n_components=2)
+    data_pca = pca.fit_transform(the_data)
+    km = KMeans(n_clusters=cluster_num)
+    clusters = km.fit_predict(data_pca)
+
+    # Create Model
+    tree = DecisionTreeClassifier(min_samples_leaf=min_samples_leaf, ccp_alpha=pruning_level)
+    tree.fit(the_data, clusters)
+
+    # Generate Report
+    feature_names = the_data.columns
+    class_rule_dict = get_class_rules(tree, feature_names)
+
+    report_class_list = []
+    for class_name in class_rule_dict.keys():
+        rule_list = class_rule_dict[class_name]
+        combined_string = ""
+        for rule in rule_list:
+            combined_string += "[{}] {}\n\n".format(rule[1], rule[0])
+        report_class_list.append((class_name, combined_string))
+
+    cluster_instance_df = pd.Series(clusters).value_counts().reset_index()
+    cluster_instance_df.columns = ['class_name', 'instance_count']
+    report_df = pd.DataFrame(report_class_list, columns=['class_name', 'rule_list'])
+    report_df = pd.merge(cluster_instance_df, report_df, on='class_name', how='left')
+    (report_df.sort_values(by='class_name')[['class_name', 'instance_count', 'rule_list']]).to_csv("clusters_reports.csv")
+
+
+def load_data():
+    print("[ LOADING DATA ... ]")
+    the_data = pandas.read_csv("credit_card_data.csv")
+    the_data['BALANCE'] = the_data['BALANCE'].fillna(0)
+    the_data['PURCHASES'] = the_data['PURCHASES'].fillna(0)
+    the_data['CASH_ADVANCE'] = the_data['CASH_ADVANCE'].fillna(0)
+    the_data['CREDIT_LIMIT'] = the_data['CREDIT_LIMIT'].fillna(0)
+    the_data['PAYMENTS'] = the_data['PAYMENTS'].fillna(0)
+    the_data['MINIMUM_PAYMENTS'] = the_data['MINIMUM_PAYMENTS'].fillna(0)
+
+    numerical = ['BALANCE', 'PURCHASES', 'CASH_ADVANCE', 'MINIMUM_PAYMENTS' , 'CREDIT_LIMIT', 'PAYMENTS' ]
+    categorical = ['CUST_ID']
+    the_data = the_data[numerical]
+
+    # Interpolating data
+    the_data = the_data.interpolate(method='linear')
+    the_data = the_data.applymap(lambda x: np.log(x + 1))
+
+    # Scaling data
+    scalar = StandardScaler()
+    data_scaled = scalar.fit_transform(the_data.values)
+    data = pd.DataFrame(data_scaled, columns=the_data.columns)
+    return data
+
+
+def elbow_algorithm(the_data):
+    print("[ ELBOW ALGORITHM ... ]")
+
+    model = KMeans()
+    visualizer = KElbowVisualizer(model, k=(4, 12))
+
+    visualizer.fit(the_data)  # Fit the data to the visualizer
+    visualizer.show()
+    print("     Estimated number of clusters: "+str(visualizer.elbow_value_))
+    return visualizer.elbow_value_
+
+
+def exploratory_analysis(the_data, cluster_num):
+    print("[ EXPLORATORY DATA ANALYSIS ... ]")
+    k_means = KMeans(n_clusters=cluster_num)
+
+    cols = ['BALANCE', 'PURCHASES', 'CASH_ADVANCE', 'CREDIT_LIMIT', 'PAYMENTS', 'MINIMUM_PAYMENTS']
+    chosen_cols = pandas.DataFrame(the_data[cols])
+
+    label = k_means.fit_predict(chosen_cols)
+
+    chosen_cols['CLUSTER_NUM'] = label
+    cols.append('CLUSTER_NUM')
+
+    # Graphical representation of clusters by number of elements
+    sb.countplot(data=chosen_cols, hue='CLUSTER_NUM', x='CLUSTER_NUM')
+    sb.pairplot(chosen_cols[cols], hue='CLUSTER_NUM', vars=cols, palette='muted')
     plt.show()
 
-    cols1 = ["MONTHLY_AVG_PURCHASE", "MONTHLY_CASH_ADVANCE", "LIMIT_RATIO", "PAYMENT_MIN_RATIO"]
-    selected1 = pandas.DataFrame(data[cols1])
-
-    label1 = k_means.fit_predict(selected1)
-
-    # 'cluster' column
-    selected1['cluster'] = label1
-    cols1.append('cluster')
-
-    # Seaborn pairplot
-    sb.countplot(data=selected1, hue='cluster', x='cluster')
-    sb.pairplot(selected1[cols1], hue='cluster', vars=cols1, palette='Dark2')
+    # BoxPlots
+    ax = sb.boxplot(x="CLUSTER_NUM", y="CREDIT_LIMIT", data=chosen_cols)
+    plt.title("Credit limit values by clusters ")
     plt.show()
+    ax = sb.boxplot(x="CLUSTER_NUM", y="PURCHASES", data=chosen_cols)
+    plt.title("Purchases values by clusters ")
+    plt.show()
+    ax = sb.boxplot(x="CLUSTER_NUM", y="CASH_ADVANCE", data=chosen_cols)
+    plt.title("Cash advance values by clusters ")
+    plt.show()
+    ax = sb.boxplot(x="CLUSTER_NUM", y="BALANCE", data=chosen_cols)
+    plt.title("Balance values by clusters ")
+    plt.show()
+    ax = sb.boxplot(x="CLUSTER_NUM", y="PAYMENTS", data=chosen_cols)
+    plt.title("Payments values by clusters ")
+    plt.show()
+    ax = sb.boxplot(x="CLUSTER_NUM", y="MINIMUM_PAYMENTS", data=chosen_cols)
+    plt.title("Minimum payments values by clusters ")
+    plt.show()
+
+
+def principal_component_analysis(the_data, cluster_num):
+
+    # Reducing data dimensionality
+    pca = PCA(n_components=2)
+    data_pca = pca.fit_transform(the_data)
+
+    plt.figure(figsize=(10, 8))
+
+    plt.title('KMeans Clustering with PCA - number of clusters: '+str(cluster_num))
+    plt.xlabel('PC1')
+    plt.ylabel('PC2')
+
+    model = KMeans(n_clusters=cluster_num).fit(data_pca)
+    model_label = model.labels_
+
+    scatter = plt.scatter(data_pca[:, 0], data_pca[:, 1], c=model_label, cmap='Spectral')
+    plt.colorbar(scatter)
+    plt.show()
+
 
 if __name__ == '__main__':
-
-    data = []
-    row_num = 0
-    with open("credit_card_data.csv", mode='r') as csv_file:
-        csv_reader = csv.reader(csv_file)
-        for row in csv_reader:
-            row = row[1:]
-            if row_num == 0:
-                row_num = row_num + 1
-                continue
-            else:
-                for item in row:
-                    if item == "":
-                        row[row.index(item)] = 0
-                [float(row[row.index(i)]) for i in row]
-                data.append(row)
-    data = np.array(data)
-
-    allData = pandas.read_csv("credit_card_data.csv")
-    allData['BALANCE'] = allData['BALANCE'].fillna(0)
-    allData['BALANCE_FREQUENCY'] = allData['BALANCE_FREQUENCY'].fillna(0)
-    allData['PURCHASES'] = allData['PURCHASES'].fillna(0)
-    allData['ONEOFF_PURCHASES'] = allData['ONEOFF_PURCHASES'].fillna(0)
-    allData['INSTALLMENTS_PURCHASES'] = allData['INSTALLMENTS_PURCHASES'].fillna(0)
-    allData['CASH_ADVANCE'] = allData['CASH_ADVANCE'].fillna(0)
-    allData['PURCHASES_FREQUENCY'] = allData['PURCHASES_FREQUENCY'].fillna(0)
-    allData['ONEOFF_PURCHASES_FREQUENCY'] = allData['ONEOFF_PURCHASES_FREQUENCY'].fillna(0)
-    allData['PURCHASES_INSTALLMENTS_FREQUENCY'] = allData['PURCHASES_INSTALLMENTS_FREQUENCY'].fillna(0)
-    allData['CASH_ADVANCE_FREQUENCY'] = allData['CASH_ADVANCE_FREQUENCY'].fillna(0)
-    allData['CASH_ADVANCE_TRX'] = allData['CASH_ADVANCE_TRX'].fillna(0)
-    allData['PURCHASES_TRX'] = allData['PURCHASES_TRX'].fillna(0)
-    allData['CREDIT_LIMIT'] = allData['CREDIT_LIMIT'].fillna(0)
-    allData['PAYMENTS'] = allData['PAYMENTS'].fillna(0)
-    allData['MINIMUM_PAYMENTS'] = allData['MINIMUM_PAYMENTS'].fillna(0)
-    allData['TENURE'] = allData['TENURE'].fillna(0)
-    allData['PRC_FULL_PAYMENT'] = allData['PRC_FULL_PAYMENT'].fillna(0)
-    # allData.info()
-
-    numerical = ['BALANCE', 'BALANCE_FREQUENCY', 'PURCHASES', 'ONEOFF_PURCHASES', 'INSTALLMENTS_PURCHASES', 'CASH_ADVANCE',
-                 'PURCHASES_FREQUENCY', 'ONEOFF_PURCHASES_FREQUENCY', 'PURCHASES_INSTALLMENTS_FREQUENCY',
-                 'CASH_ADVANCE_FREQUENCY', 'CASH_ADVANCE_TRX', 'PURCHASES_TRX', 'CREDIT_LIMIT', 'PAYMENTS',
-                 'MINIMUM_PAYMENTS', 'PRC_FULL_PAYMENT', 'TENURE']
-
-    categorical = ['CUST_ID']
-
-    allData = allData[numerical]
-
-    #eda(allData)
-
-    #ELBOW ALGORITHM
-    #
-    # print("[ ELBOW ALGORITHM ... ]")
-    #
-    # model = KMeans()
-    # visualizer = KElbowVisualizer(model, k=(4, 12))
-    #
-    # visualizer.fit(allData)  # Fit the data to the visualizer
-    # visualizer.show()
-
-    print("[ CLUSTERING ... ]")
-    kmeans = KMeans(n_clusters=6, random_state=0, init="k-means++", max_iter=300, n_init=10)
-    y_kmeans = kmeans.fit_predict(data)
-    X = data
-
-    first_cluster = np.matrix(X[y_kmeans == 3]).astype(float)
-    df_cluster1 = pandas.DataFrame(first_cluster)
-
-    # 6 Visualising the clusters
-    plt.scatter(X[y_kmeans == 0, 0], X[y_kmeans == 0, 1], s=10, c='red', label='Cluster 1')
-    plt.scatter(X[y_kmeans == 1, 0], X[y_kmeans == 1, 1], s=10, c='blue', label='Cluster 2')
-    plt.scatter(X[y_kmeans == 2, 0], X[y_kmeans == 2, 1], s=10, c='green', label='Cluster 3')
-    plt.scatter(X[y_kmeans == 3, 0], X[y_kmeans == 3, 1], s=10, c='cyan', label='Cluster 4')
-    plt.scatter(X[y_kmeans == 4, 0], X[y_kmeans == 4, 1], s=10, c='magenta', label='Cluster 5')
-    plt.scatter(X[y_kmeans == 5, 0], X[y_kmeans == 5, 1], s=10, c='purple', label='Cluster 6')
-
-    # Plot the centroid. This time we're going to use the cluster centres  #attribute that returns here the coordinates of the centroid.
-    plt.scatter(kmeans.cluster_centers_[:, 0], kmeans.cluster_centers_[:, 1], s=30, c='yellow', label='Centroids')
-    plt.title('Clusters of CreditCards users')
-
-    plt.show()
-
-
-    df_cluster1[0].hist(weights=(np.ones_like(df_cluster1.index) / len(df_cluster1.index))*100)
-
-    #sb.set()
-    #sns.jointplot(x=df_cluster1[12], y=df_cluster1[2])
-    #sb.pairplot(allData, vars=[0, 2])
-
-    plt.title('['+str(len(first_cluster))+']')
-    plt.show()
+    data = load_data()
+    cluster_number = elbow_algorithm(data)
+    principal_component_analysis(data, cluster_number)
+    exploratory_analysis(data, cluster_number)
+    cluster_report(data, cluster_number)
+    print("ANALYSIS DONE!")
