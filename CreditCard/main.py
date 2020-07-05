@@ -51,7 +51,7 @@ def get_class_rules(tree: DecisionTreeClassifier, feature_names: list):
     return class_rules_dict
 
 
-def cluster_report(the_data: pd.DataFrame, cluster_num, min_samples_leaf=50, pruning_level=0.01):
+def cluster_report(the_data: pd.DataFrame, cluster_num, min_samples_leaf=45, pruning_level=0.02):
     print("[ MAKING CLUSTER REPORT ... ]")
     pca = PCA(n_components=2)
     data_pca = pca.fit_transform(the_data)
@@ -84,25 +84,28 @@ def cluster_report(the_data: pd.DataFrame, cluster_num, min_samples_leaf=50, pru
 def load_data():
     print("[ LOADING DATA ... ]")
     the_data = pandas.read_csv("credit_card_data.csv")
-    the_data['BALANCE'] = the_data['BALANCE'].fillna(0)
-    the_data['PURCHASES'] = the_data['PURCHASES'].fillna(0)
-    the_data['CASH_ADVANCE'] = the_data['CASH_ADVANCE'].fillna(0)
-    the_data['CREDIT_LIMIT'] = the_data['CREDIT_LIMIT'].fillna(0)
-    the_data['PAYMENTS'] = the_data['PAYMENTS'].fillna(0)
-    the_data['MINIMUM_PAYMENTS'] = the_data['MINIMUM_PAYMENTS'].fillna(0)
 
-    numerical = ['BALANCE', 'PURCHASES', 'CASH_ADVANCE', 'MINIMUM_PAYMENTS' , 'CREDIT_LIMIT', 'PAYMENTS' ]
+    the_data['BALANCE'] = the_data['BALANCE'].fillna(the_data['BALANCE'].median())
+    the_data['PURCHASES'] = the_data['PURCHASES'].fillna(the_data['PURCHASES'].median())
+    the_data['CASH_ADVANCE'] = the_data['CASH_ADVANCE'].fillna(the_data['CASH_ADVANCE'].median())
+    the_data['CREDIT_LIMIT'] = the_data['CREDIT_LIMIT'].fillna(the_data['CREDIT_LIMIT'].median())
+    the_data['PAYMENTS'] = the_data['PAYMENTS'].fillna(the_data['PAYMENTS'].median())
+    the_data['MINIMUM_PAYMENTS'] = the_data['MINIMUM_PAYMENTS'].fillna(the_data['MINIMUM_PAYMENTS'].median())
+
+    numerical = ['BALANCE', 'PURCHASES', 'CASH_ADVANCE', 'MINIMUM_PAYMENTS', 'CREDIT_LIMIT', 'PAYMENTS']
     categorical = ['CUST_ID']
     the_data = the_data[numerical]
 
     # Interpolating data
-    the_data = the_data.interpolate(method='linear')
+    #the_data = the_data.interpolate(method='linear')
+
     the_data = the_data.applymap(lambda x: np.log(x + 1))
 
     # Scaling data
     scalar = StandardScaler()
     data_scaled = scalar.fit_transform(the_data.values)
     data = pd.DataFrame(data_scaled, columns=the_data.columns)
+
     return data
 
 
@@ -110,7 +113,7 @@ def elbow_algorithm(the_data):
     print("[ ELBOW ALGORITHM ... ]")
 
     model = KMeans()
-    visualizer = KElbowVisualizer(model, k=(4, 12))
+    visualizer = KElbowVisualizer(model, k=(4, 14))
 
     visualizer.fit(the_data)  # Fit the data to the visualizer
     visualizer.show()
@@ -135,7 +138,7 @@ def exploratory_analysis(the_data, cluster_num):
     sb.pairplot(chosen_cols[cols], hue='CLUSTER_NUM', vars=cols, palette='muted')
     plt.show()
 
-    # BoxPlots
+    # # BoxPlots
     ax = sb.boxplot(x="CLUSTER_NUM", y="CREDIT_LIMIT", data=chosen_cols)
     plt.title("Credit limit values by clusters ")
     plt.show()
@@ -162,15 +165,14 @@ def principal_component_analysis(the_data, cluster_num):
     pca = PCA(n_components=2)
     data_pca = pca.fit_transform(the_data)
 
-    plt.figure(figsize=(10, 8))
+    plt.figure(figsize=(8, 6))
 
-    plt.title('KMeans Clustering with PCA - number of clusters: '+str(cluster_num))
+    plt.title('Number of clusters: '+str(cluster_num))
     plt.xlabel('PC1')
     plt.ylabel('PC2')
 
     model = KMeans(n_clusters=cluster_num).fit(data_pca)
     model_label = model.labels_
-
     scatter = plt.scatter(data_pca[:, 0], data_pca[:, 1], c=model_label, cmap='Spectral')
     plt.colorbar(scatter)
     plt.show()
