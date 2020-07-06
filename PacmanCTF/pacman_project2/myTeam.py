@@ -54,7 +54,7 @@ class SmartAttackAgent(CaptureAgent):
   def __init__(self, index):
 
     super().__init__(index)
-    self.capacity = 6
+    self.capacity = 4
     self.lastReturned = 0
     self.defendTime = 0
     self.winningAmount = 0
@@ -220,7 +220,9 @@ class SmartAttackAgent(CaptureAgent):
     enemyGhostDistances = []
     for enemyPos in enemyGhostPositions:
       distance = self.distancer.getDistance(pos,enemyPos)
-      if distance < 7:
+      if distance < 5 and self.getCurrentObservation().getAgentState(self.index).numCarrying > 0:
+        isChased = True
+      if distance < 3 and self.getCurrentObservation().getAgentState(self.index).numCarrying == 0:
         isChased = True
       #if distance < 8:
         #isThreatened = True
@@ -261,16 +263,20 @@ class SmartAttackAgent(CaptureAgent):
 
     features = util.Counter()
     weights = util.Counter()
+    rev = Directions.REVERSE[succ.getAgentState(self.index).configuration.direction]
     if action == Directions.STOP:
       features['stop'] = 1
     else:
       features['stop'] = 0
 
+    if action == rev:
+      features['reverse'] = 1
+    else:
+      features['reverse'] = 0
 
     if len(enemyGhostDistances) == 0 and not state.isPacman and not min(scaredTimes) > 0:
       defenderMode = True
     if len(enemyInvaderDistances) > 0:
-      print(min(enemyInvaderDistances))
       if min(enemyInvaderDistances) < 7 and not state.scaredTimer >= 3:
         defenderMode = True
 
@@ -285,7 +291,8 @@ class SmartAttackAgent(CaptureAgent):
     if succ.data.timeleft < 200 and self.winningAmount>0:
       defenderMode = True
 
-    weights['stop'] = -90000
+    weights['stop'] = -100
+    weights['reverse'] = -5
     features['invaderDistance'] = 0
     if defenderMode:
       if len(enemyInvaderDistances) > 0:
@@ -301,9 +308,7 @@ class SmartAttackAgent(CaptureAgent):
     else:
       features['ghostDistance'] = 0
     if isChased:
-      weights['ghostDistance'] = 200000000000000000
-    if isThreatened:
-      weights['ghostDistance'] = 500
+      weights['ghostDistance'] = 20000
     else:
       weights['ghostDistance'] = 50
     weights['invaderDistance'] = -100
@@ -318,23 +323,20 @@ class SmartAttackAgent(CaptureAgent):
     else:
       weights['distanceToFood'] = 0
     if not defenderMode:
-      weights['powerPellet'] = -5000
+      weights['powerPellet'] = -19000
     else:
       weights['powerPellet'] = 0
     if isChased:
       weights['powerPellet'] *= 100
     weights['backHome'] = -1
-    if isThreatened:
-      weights['powerPellet'] *= 50
+    if self.getCurrentObservation().getAgentState(self.index).numCarrying >= self.capacity:
+      cap = True
+    else:
+      cap = False
+    features['backHome'] += self.goBack(pos,isChased,cap,self.getCurrentObservation(),defenderMode)
 
-    features['backHome'] += self.goBack(pos,isChased,isThreatened,succ)
 
 
-    print("------------")
-    print(defenderMode)
-    print(features)
-    print(weights)
-    print("------------")
     return features*weights
 
   def cashIn(self, pos, agentState, gameState, isChased, isThreatened):
@@ -359,16 +361,18 @@ class SmartAttackAgent(CaptureAgent):
     if gameState.hasWall(pos[0], pos[1] + 1):
       wallCount += 1
 
-    if wallCount >=3:
+    if wallCount >= 3:
       return 1
     else:
       return 0
 
-  def goBack(self,pos,isChased,isThreatened,state):
-    if isChased:
-      return self.getMazeDistance(pos,state.getInitialAgentPosition(self.index)) * 3000000
-    elif isThreatened:
-      return self.getMazeDistance(pos,state.getInitialAgentPosition(self.index)) * 500
+  def goBack(self,pos,isChased,cap,state,isDefender):
+    if isDefender and state.getAgentState(self.index).isPacman:
+      return self.distancer.getDistance(pos, state.getInitialAgentPosition(self.index)) * 3000000
+    elif isChased:
+      return self.distancer.getDistance(pos,state.getInitialAgentPosition(self.index)) * 3000000
+    elif cap:
+      return self.distancer.getDistance(pos,state.getInitialAgentPosition(self.index)) * 500
     else:
       return 0
 
@@ -461,7 +465,7 @@ class SmartDefenderAgent(CaptureAgent):
     # Alpha-Beta Pruning
     actions = gameState.getLegalActions(self.index)
     currentScore = -999999
-    returnAction = ''
+    returnAction = actions[0]
     alpha = -999999
     beta = 999999
     for action in actions:
@@ -513,7 +517,7 @@ class SmartDefenderAgent(CaptureAgent):
     myPellets = self.getCapsulesYouAreDefending(succ)
     eatFood = self.getFood(succ)
     enemies = [succ.getAgentState(i) for i in self.getOpponents(succ)]
-    invaders = [a for a in enemies if a.isPacman and a.getPosition() != None]
+    invaders = [a for a in enemies if a.isPacman and a.getPosition() is not None]
     scaredTimes = []
     stealMode = True
     protectionMode = False
@@ -594,7 +598,7 @@ class SmartDefenderAgent(CaptureAgent):
         sumFoodDistance += distance
 
     for distance in enemyGhostDistances:
-      if distance < 9:
+      if distance < 11:
         stealMode = False
         protectionMode = True
         break
@@ -616,23 +620,29 @@ class SmartDefenderAgent(CaptureAgent):
       features['invaderDistance'] = min(enemyInvaderDistances)*100
     if len(pelletDistances) > 0:
       features['powerPellet'] = min(pelletDistances)
-    features['backHome'] = self.cashIn(pos,succ.getAgentState(self.index),succ)
+    features['backHome'] = self.getMazeDistance(pos,succ.getInitialAgentPosition(self.index))
 
+
+    weights['succScore'] = 10000
+
+    features['invaderNo'] = len(enemyInvaderDistances)
     if protectionMode:
-      features['backHome'] += 100
-
-    weights['succScore'] = 1000
+      weights['invaderNo'] = -10000
 
     weights['distanceToFood'] = 0
     if stealMode:
-      weights['distanceToFood'] = -100
+      weights['distanceToFood'] = -300
 
-    weights['invaderDistance'] = -100
+    weights['invaderDistance'] = -10
     if stealMode:
       weights['powerPellet'] = -100
-    weights['backHome'] = -1
+    else:
+      weights['powerPellet'] = 0
+    weights['backHome'] = 0
     if protectionMode and succ.getAgentState(self.index).isPacman:
-      weights['backHome'] *= 1000
+      weights['backHome'] -= 1000
+
+
     return features*weights
 
   def cashIn(self, pos, agentState,gameState):
