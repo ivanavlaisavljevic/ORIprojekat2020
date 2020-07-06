@@ -104,7 +104,11 @@ class SmartAttackAgent(CaptureAgent):
       alpha1 = alpha
       for action in actions:
         successor = gameState.generateSuccessor(self.index, action)
-        maxvalue = max(maxvalue, minLevel(successor, currDepth, 1, alpha1, beta,action))
+        if self.index == 0 or self.index == 2:
+          opp = 1
+        else:
+          opp = 0
+        maxvalue = max(maxvalue, minLevel(successor, currDepth, opp, alpha1, beta,action))
         if maxvalue > beta:
           return maxvalue
         alpha1 = max(alpha1, maxvalue)
@@ -120,12 +124,12 @@ class SmartAttackAgent(CaptureAgent):
       beta1 = beta
       for action in actions:
         successor = gameState.generateSuccessor(agentIndex, action)
-        if agentIndex == 3:
+        if agentIndex == 3 or agentIndex == 2:
           minvalue = min(minvalue, maxLevel(successor, depth, alpha, beta1,action))
           if minvalue < alpha:
             return minvalue
           beta1 = min(beta1, minvalue)
-        elif agentIndex == 1:
+        elif agentIndex == 1 or agentIndex == 0:
           minvalue = min(minvalue, minLevel(successor, depth, agentIndex + 2, alpha, beta1,action))
           if minvalue < alpha:
             return minvalue
