@@ -16,7 +16,7 @@ from captureAgents import CaptureAgent
 import random, time, util
 from game import Directions
 import game
-
+DEF_TIME = 60
 #################
 # Team creation #
 #################
@@ -55,6 +55,9 @@ class SmartAttackAgent(CaptureAgent):
 
     super().__init__(index)
     self.capacity = 6
+    self.lastReturned = 0
+    self.defendTime = 0
+    self.winningAmount = 0
   def registerInitialState(self, gameState):
     """
     This method handles the initial setup of the
@@ -91,39 +94,39 @@ class SmartAttackAgent(CaptureAgent):
     '''
 
     # Used only for pacman agent hence agentindex is always 0.
-    def maxLevel(gameState, depth, alpha, beta):
+    def maxLevel(gameState, depth, alpha, beta,act):
 
       currDepth = depth + 1
       if gameState.isOver() or currDepth == 1:  # Terminal Test
-        return self.evaluate(gameState)
+        return self.evaluate(gameState,act)
       maxvalue = -999999
       actions = gameState.getLegalActions(self.index)
       alpha1 = alpha
       for action in actions:
         successor = gameState.generateSuccessor(self.index, action)
-        maxvalue = max(maxvalue, minLevel(successor, currDepth, 1, alpha1, beta))
+        maxvalue = max(maxvalue, minLevel(successor, currDepth, 1, alpha1, beta,action))
         if maxvalue > beta:
           return maxvalue
         alpha1 = max(alpha1, maxvalue)
       return maxvalue
 
     # For all ghosts.
-    def minLevel(gameState, depth, agentIndex, alpha, beta):
+    def minLevel(gameState, depth, agentIndex, alpha, beta,act):
 
       minvalue = 999999
       if gameState.isOver():  # Terminal Test
-        return self.evaluate(gameState)
+        return self.evaluate(gameState,act)
       actions = gameState.getLegalActions(agentIndex)
       beta1 = beta
       for action in actions:
         successor = gameState.generateSuccessor(agentIndex, action)
         if agentIndex == 3:
-          minvalue = min(minvalue, maxLevel(successor, depth, alpha, beta1))
+          minvalue = min(minvalue, maxLevel(successor, depth, alpha, beta1,action))
           if minvalue < alpha:
             return minvalue
           beta1 = min(beta1, minvalue)
         elif agentIndex == 1:
-          minvalue = min(minvalue, minLevel(successor, depth, agentIndex + 2, alpha, beta1))
+          minvalue = min(minvalue, minLevel(successor, depth, agentIndex + 2, alpha, beta1,action))
           if minvalue < alpha:
             return minvalue
           beta1 = min(beta1, minvalue)
@@ -131,14 +134,15 @@ class SmartAttackAgent(CaptureAgent):
 
     # Alpha-Beta Pruning
     actions = gameState.getLegalActions(self.index)
+
     currentScore = -999999
-    returnAction = ''
+    returnAction = actions[0]
     alpha = -999999
     beta = 999999
     for action in actions:
       nextState = gameState.generateSuccessor(self.index, action)
       # Next level is a min level. Hence calling min for successors of the root.
-      score = minLevel(nextState, 0, 1, alpha, beta)
+      score = minLevel(nextState, 0, 1, alpha, beta, action)
       # Choosing the action which is Maximum of the successors.
       if score > currentScore:
         returnAction = action
@@ -174,7 +178,7 @@ class SmartAttackAgent(CaptureAgent):
 
 
 
-  def evaluate(self, succ):
+  def evaluate(self, succ,action):
     """
     Computes a linear combination of features and feature weights
     """
@@ -185,11 +189,13 @@ class SmartAttackAgent(CaptureAgent):
     eatFood = self.getFood(succ)
     enemies = [succ.getAgentState(i) for i in self.getOpponents(succ)]
     invaders = [a for a in enemies if a.isPacman and a.getPosition() != None]
-
+    defenderMode = False
     state = succ.getAgentState(self.index)
     scaredTimes = []
     isChased = False
     isThreatened = False
+
+
     if succ.isOver():
       return 100000
 
@@ -203,21 +209,21 @@ class SmartAttackAgent(CaptureAgent):
 
     enemyGhostPositions = []
     for enemy in opponents:
-      if not succ.getAgentState(enemy).isPacman:
+      if not succ.getAgentState(enemy).isPacman and not succ.getAgentState(enemy).scaredTimer > 8:
         enemyGhostPositions.append(succ.getAgentPosition(enemy))
 
     enemyInvaderPositions = []
     for enemy in opponents:
-      if succ.getAgentState(enemy).isPacman and succ.getAgentState(enemy).scaredTimer > 3:
+      if succ.getAgentState(enemy).isPacman:
         enemyInvaderPositions.append(succ.getAgentPosition(enemy))
 
     enemyGhostDistances = []
     for enemyPos in enemyGhostPositions:
       distance = self.distancer.getDistance(pos,enemyPos)
-      if distance < 3:
+      if distance < 7:
         isChased = True
-      if distance < 6:
-        isThreatened = True
+      #if distance < 8:
+        #isThreatened = True
       enemyGhostDistances.append(self.distancer.getDistance(pos,enemyPos))
 
     enemyInvaderDistances = []
@@ -255,49 +261,87 @@ class SmartAttackAgent(CaptureAgent):
 
     features = util.Counter()
     weights = util.Counter()
+    if action == Directions.STOP:
+      features['stop'] = 1
+    else:
+      features['stop'] = 0
+
+
+    if len(enemyGhostDistances) == 0 and not state.isPacman and not min(scaredTimes) > 0:
+      defenderMode = True
+    if len(enemyInvaderDistances) > 0:
+      print(min(enemyInvaderDistances))
+      if min(enemyInvaderDistances) < 7 and not state.scaredTimer >= 3:
+        defenderMode = True
+
+
+    if self.red:
+      self.winningAmount = succ.getScore()
+    else:
+      self.winningAmount = -1*succ.getScore()
 
 
 
+    if succ.data.timeleft < 200 and self.winningAmount>0:
+      defenderMode = True
+
+    weights['stop'] = -90000
+    features['invaderDistance'] = 0
+    if defenderMode:
+      if len(enemyInvaderDistances) > 0:
+        features['invaderDistance'] = min(enemyInvaderDistances)*100
     features['succScore'] = -len(self.getFood(succ).asList())
     features['distanceToFood'] = min(foodDistances)
     if len(pelletDistances) > 0:
       features['powerPellet'] = min(pelletDistances)
-    features['backHome'] = self.cashIn(pos, succ.getAgentState(self.index), succ, isChased)
+    features['backHome'] = self.cashIn(pos, succ.getAgentState(self.index), succ, isChased, isThreatened)
     if len(enemyGhostDistances) > 0:
-      features['ghostDistance'] = sum(enemyGhostDistances)
+      if not defenderMode:
+        features['ghostDistance'] = min(enemyGhostDistances)
     else:
       features['ghostDistance'] = 0
     if isChased:
-      weights['ghostDistance'] = 1500
-
+      weights['ghostDistance'] = 200000000000000000
+    if isThreatened:
+      weights['ghostDistance'] = 500
     else:
-      weights['ghostDistance'] = 5
-
+      weights['ghostDistance'] = 50
+    weights['invaderDistance'] = -100
     features['deadEnd'] = self.isDeadEnd(succ,pos)
     weights['deadEnd'] = 0
     if isChased:
       weights['deadEnd'] = -9999
-
-    print(features)
-    weights['succScore'] = 1000
-    weights['distanceToFood'] = -10
-
-
-    weights['powerPellet'] = -100
+    if not defenderMode:
+      weights['succScore'] = 4000
+    if not defenderMode:
+      weights['distanceToFood'] = -100
+    else:
+      weights['distanceToFood'] = 0
+    if not defenderMode:
+      weights['powerPellet'] = -5000
+    else:
+      weights['powerPellet'] = 0
     if isChased:
       weights['powerPellet'] *= 100
     weights['backHome'] = -1
     if isThreatened:
-      weights['backHome'] = -100
-    if isChased:
-      weights['backHome'] = -150
-    print(weights)
+      weights['powerPellet'] *= 50
 
+    features['backHome'] += self.goBack(pos,isChased,isThreatened,succ)
+
+
+    print("------------")
+    print(defenderMode)
+    print(features)
+    print(weights)
+    print("------------")
     return features*weights
 
-  def cashIn(self, pos, agentState, gameState, isChased):
-    cap = self.capacity
+  def cashIn(self, pos, agentState, gameState, isChased, isThreatened):
+    cap = self.capacity + 1
     if isChased:
+      cap = 1
+    if isThreatened:
       cap = 3
     if agentState.numCarrying >= cap:
       return self.getMazeDistance(pos,gameState.getInitialAgentPosition(self.index))
@@ -320,6 +364,14 @@ class SmartAttackAgent(CaptureAgent):
     else:
       return 0
 
+  def goBack(self,pos,isChased,isThreatened,state):
+    if isChased:
+      return self.getMazeDistance(pos,state.getInitialAgentPosition(self.index)) * 3000000
+    elif isThreatened:
+      return self.getMazeDistance(pos,state.getInitialAgentPosition(self.index)) * 500
+    else:
+      return 0
+
 class SmartDefenderAgent(CaptureAgent):
   """
   A Dummy agent to serve as an example of the necessary agent structure.
@@ -331,7 +383,7 @@ class SmartDefenderAgent(CaptureAgent):
 
     super().__init__(index)
     self.capacity = 2
-
+    self.winningAmount = 0
 
   def registerInitialState(self, gameState):
     """
@@ -542,17 +594,22 @@ class SmartDefenderAgent(CaptureAgent):
         sumFoodDistance += distance
 
     for distance in enemyGhostDistances:
-      if distance < 4:
+      if distance < 9:
         stealMode = False
         protectionMode = True
         break
     else:
       if protectionMode != True:
         stealMode = True
-
+    if self.red:
+      self.winningAmount = succ.getScore()
+    else:
+      self.winningAmount = -1*succ.getScore()
     features = util.Counter()
     weights = util.Counter()
-
+    if succ.data.timeleft < 150 and self.winningAmount>0:
+      stealMode = False
+      protectionMode = True
     features['succScore'] = -len(self.getFood(succ).asList())
     features['distanceToFood'] = min(foodDistances)
     if len(enemyInvaderDistances) > 0:
@@ -565,9 +622,10 @@ class SmartDefenderAgent(CaptureAgent):
       features['backHome'] += 100
 
     weights['succScore'] = 1000
-    weights['distanceToFood'] = -1
+
+    weights['distanceToFood'] = 0
     if stealMode:
-      weights['distanceToFood'] *= 100
+      weights['distanceToFood'] = -100
 
     weights['invaderDistance'] = -100
     if stealMode:
